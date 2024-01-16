@@ -1,13 +1,21 @@
 import boto3
 import csv
 import datetime
+import re  # Import regex module
 from collections import defaultdict
 from tqdm import tqdm  # For progress bars
 
 # Function to download VPC flow logs from S3
 def download_vpc_flow_logs_from_s3(sample_days):
     s3 = boto3.client('s3')
-    bucket_name, prefix = args.s3_arn.split(':')[4:6]  # Access S3 ARN
+
+    # Modified ARN parsing using regex
+    match = re.search(r'arn:aws:s3:::(?P<bucket_name>[^/]+)(?:/(?P<prefix>.*))?', args.s3_arn)
+    if match:
+        bucket_name = match.group('bucket_name')
+        prefix = match.group('prefix') or ''  # Default to empty string if no prefix
+    else:
+        raise ValueError("Invalid S3 ARN format")
 
     now = datetime.datetime.utcnow()
     limit_date = now - datetime.timedelta(days=sample_days)
@@ -38,6 +46,7 @@ def identify_egress_traffic(log_data):
             }
 
 # Main program
+# Main program
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Analyze VPC flow logs from S3")
@@ -65,7 +74,7 @@ def main():
             srcaddr,
             ','.join(values['dstaddr']),
             ','.join(values['dstport']),
-            values['protocol'],
+            ','.join(values['protocol']),  # Fix to join protocol values
             values.get('vpc-id', ''),
             values.get('subnet-id', ''),
             values.get('instance-id', ''),
@@ -83,7 +92,7 @@ def main():
                 srcaddr,
                 ','.join(values['dstaddr']),
                 ','.join(values['dstport']),
-                values['protocol'],
+                ','.join(values['protocol']),
                 values.get('vpc-id', ''),
                 values.get('subnet-id', ''),
                 values.get('instance-id', ''),
