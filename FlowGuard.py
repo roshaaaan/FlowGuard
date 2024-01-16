@@ -1,6 +1,7 @@
 import boto3
 import csv
 import datetime
+import pytz  # Import the pytz library
 import re  # Import regex module
 from collections import defaultdict
 from tqdm import tqdm  # For progress bars
@@ -17,7 +18,7 @@ def download_vpc_flow_logs_from_s3(sample_days):
     else:
         raise ValueError("Invalid S3 ARN format")
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(pytz.utc)  # now is offset-aware, using UTC timezone
     limit_date = now - datetime.timedelta(days=sample_days)
     files = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)['Contents']
     files = [file['Key'] for file in files if file['LastModified'] > limit_date]
