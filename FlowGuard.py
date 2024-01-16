@@ -53,18 +53,39 @@ def main():
                 if key in ['srcaddr', 'dstaddr', 'dstport', 'protocol']:
                     traffic_pattern[log_entry['srcaddr']][key].add(value)
 
-    # Print the traffic pattern in a table format
-    print("\nTraffic Pattern:")
-    print("-" * 50)
+# Print the traffic pattern in a table format
+print("\nTraffic Pattern:")
+print("-" * 50)
+print("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}".format(
+    "srcaddr", "dstaddr(s)", "dstport(s)", "protocol", "vpc-id", "subnet-id", "instance-id", "region"))
+print("-" * 50)
+for srcaddr, values in traffic_pattern.items():
     print("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}".format(
+        srcaddr,
+        ','.join(values['dstaddr']),
+        ','.join(values['dstport']),
+        values['protocol'],
+        values.get('vpc-id', ''),
+        values.get('subnet-id', ''),
+        values.get('instance-id', ''),  # Corrected line
+        values.get('region', '')
+    ))
+
+# Write the traffic pattern to a text file
+with open("traffic_pattern.txt", "w") as file:
+    file.write("\nTraffic Pattern:\n")
+    file.write("-" * 50 + "\n")
+    file.write("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}\n".format(
         "srcaddr", "dstaddr(s)", "dstport(s)", "protocol", "vpc-id", "subnet-id", "instance-id", "region"))
-    print("-" * 50)
+    file.write("-" * 50 + "\n")
     for srcaddr, values in traffic_pattern.items():
-        print("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}".format(
+        file.write("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}\n".format(
             srcaddr,
             ','.join(values['dstaddr']),
             ','.join(values['dstport']),
             values['protocol'],
             values.get('vpc-id', ''),
             values.get('subnet-id', ''),
-            values.get('instance-id',
+            values.get('instance-id', ''),
+            values.get('region', '')
+        ))
