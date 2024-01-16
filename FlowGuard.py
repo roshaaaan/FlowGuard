@@ -9,23 +9,26 @@ from tqdm import tqdm  # For progress bars
 # Function to download VPC flow logs from S3
 def download_vpc_flow_logs_from_s3(sample_days):
     s3 = boto3.client('s3')
-
-    # Modified ARN parsing using regex
     match = re.search(r'arn:aws:s3:::(?P<bucket_name>[^/]+)(?:/(?P<prefix>.*))?', args.s3_arn)
     if match:
         bucket_name = match.group('bucket_name')
-        prefix = match.group('prefix') or ''  # Default to empty string if no prefix
+        initial_prefix = match.group('prefix') or ''  # Default to empty string if no prefix
     else:
         raise ValueError("Invalid S3 ARN format")
 
-    now = datetime.datetime.now(pytz.utc)  # now is offset-aware, using UTC timezone
+    now = datetime.datetime.now(pytz.utc)
     limit_date = now - datetime.timedelta(days=sample_days)
-    files = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)['Contents']
-    files = [file['Key'] for file in files if file['LastModified'] > limit_date]
 
-    for file in files:
-        with tqdm(desc=f"Downloading {file}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
-            obj = s3.get_object(Bucket=bucket_name, Key=file)
+    def list_files(bucket, prefix):
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get('Contents', []):
+                if obj['LastModified'] > limit_date:
+                    yield obj['Key']
+
+    for file_key in list_files(bucket_name, initial_prefix):
+        with tqdm(desc=f"Downloading {file_key}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
+            obj = s3.get_object(Bucket=bucket_name, Key=file_key)
             for chunk in obj['Body'].iter_chunks():
                 pbar.update(len(chunk))
                 yield chunk.decode('utf-8')
