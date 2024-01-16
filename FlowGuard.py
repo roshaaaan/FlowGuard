@@ -33,8 +33,11 @@ def download_vpc_flow_logs_from_s3(sample_days):
 # Function to identify egress traffic and strip columns
 def identify_egress_traffic(log_data):
     reader = csv.DictReader(log_data.splitlines())
+    found_egress_traffic = False  # Debugging flag
     for row in reader:
+        print("Debug - Processing row:", row)  # Debugging line
         if row['action'] == 'ACCEPT' and row['flow-direction'] == 'egress':
+            found_egress_traffic = True
             yield {
                 'srcaddr': row['srcaddr'],
                 'dstaddr': row['dstaddr'],
@@ -45,6 +48,8 @@ def identify_egress_traffic(log_data):
                 'instance-id': row['instance-id'],
                 'region': row['region']
             }
+    if not found_egress_traffic:
+        print("Debug - No egress traffic found in this chunk.")
 
 # Main program
 # Main program
