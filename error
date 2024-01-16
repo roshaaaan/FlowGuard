@@ -1,5 +1,11 @@
-
-Traffic Pattern:
---------------------------------------------------
-srcaddr         dstaddr(s)      dstport(s) protocol vpc-id          subnet-id       instance-id     region         
---------------------------------------------------
+% python3 FlowGuard.py arn:aws:s3:::central-vpc-flow-logging 3 
+Downloading AWSLogs/336175994131/vpcflowlogs/us-east-1/2024/01/13/336175994131_vpcflowlogs_us-east-1_fl-0ed9237904f71338f_20240113T1845Z_d5965fa7.log.gz: 281B [00:00, 2.44kB/s]
+Traceback (most recent call last):
+  File "/Users/roshan/src/securitas-scripts/FlowGuard/FlowGuard.py", line 111, in <module>
+    main()
+  File "/Users/roshan/src/securitas-scripts/FlowGuard/FlowGuard.py", line 69, in main
+    for log_data in download_vpc_flow_logs_from_s3(args.sample_days):
+  File "/Users/roshan/src/securitas-scripts/FlowGuard/FlowGuard.py", line 34, in download_vpc_flow_logs_from_s3
+    yield chunk.decode('utf-8')
+          ^^^^^^^^^^^^^^^^^^^^^
+UnicodeDecodeError: 'utf-8' codec can't decode byte 0x8b in position 1: invalid start byte
