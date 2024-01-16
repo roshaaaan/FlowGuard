@@ -1,20 +1,19 @@
 import boto3
 import csv
 import datetime
-import pytz  # Import the pytz library
-import re  # Import regex module
+import pytz
+import re
 import gzip
 import io
 from collections import defaultdict
-from tqdm import tqdm  # For progress bars
+from tqdm import tqdm
 
-# Function to download VPC flow logs from S3
 def download_vpc_flow_logs_from_s3(sample_days):
     s3 = boto3.client('s3')
     match = re.search(r'arn:aws:s3:::(?P<bucket_name>[^/]+)(?:/(?P<prefix>.*))?', args.s3_arn)
     if match:
         bucket_name = match.group('bucket_name')
-        initial_prefix = match.group('prefix') or ''  # Default to empty string if no prefix
+        initial_prefix = match.group('prefix') or ''
     else:
         raise ValueError("Invalid S3 ARN format")
 
@@ -32,24 +31,23 @@ def download_vpc_flow_logs_from_s3(sample_days):
         with tqdm(desc=f"Downloading {file_key}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
             obj = s3.get_object(Bucket=bucket_name, Key=file_key)
             if file_key.endswith('.gz'):
-                # Handle GZIP compressed files
                 with gzip.GzipFile(fileobj=io.BytesIO(obj['Body'].read())) as gzipfile:
                     for line in gzipfile:
                         pbar.update(len(line))
                         yield line.decode('utf-8')
             else:
-                # Handle non-compressed files
                 for chunk in obj['Body'].iter_chunks():
                     pbar.update(len(chunk))
                     yield chunk.decode('utf-8')
 
-# Function to identify egress traffic and strip columns
 def identify_egress_traffic(log_data):
     reader = csv.DictReader(log_data.splitlines())
-    found_egress_traffic = False  # Debugging flag
+    found_egress_traffic = False
     for row in reader:
-        print("Debug - Processing row:", row)  # Debugging line
-        if row['action'] == 'ACCEPT' and row['flow-direction'] == 'egress':
+        # Convert keys to lower case
+        row = {k.lower(): v for k, v in row.items()}
+        print("Debug - Row Data:", row)  # Debugging line to print row data
+        if row['action'] == 'accept' and row['flow-direction'] == 'egress':
             found_egress_traffic = True
             yield {
                 'srcaddr': row['srcaddr'],
@@ -64,7 +62,6 @@ def identify_egress_traffic(log_data):
     if not found_egress_traffic:
         print("Debug - No egress traffic found in this chunk.")
 
-# Main program
 # Main program
 def main():
     import argparse
