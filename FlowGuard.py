@@ -7,7 +7,7 @@ from tqdm import tqdm  # For progress bars
 # Function to download VPC flow logs from S3
 def download_vpc_flow_logs_from_s3(sample_days):
     s3 = boto3.client('s3')
-    bucket_name, prefix = args.s3_arn.split(':')[4:6]  # Access s3_arn here
+    bucket_name, prefix = args.s3_arn.split(':')[4:6]  # Access S3 ARN
 
     now = datetime.datetime.utcnow()
     limit_date = now - datetime.timedelta(days=sample_days)
@@ -88,3 +88,6 @@ def main():
                 values.get('subnet-id', ''),
                 values.get('instance-id', ''),
                 values.get('region', '')))
+
+if __name__ == "__main__":
+    main()
