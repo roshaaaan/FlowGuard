@@ -42,16 +42,23 @@ def identify_egress_traffic(log_data):
 
 # Main program
 def main():
-    s3_arn = input("Enter the S3 ARN for VPC flow logs: ")
-    sample_days = int(input("Enter the number of days for sample collection: "))
+    # Get S3 ARN and sample days as command-line arguments
+    import argparse
+    parser = argparse.ArgumentParser(description="Analyze VPC flow logs from S3")
+    parser.add_argument("s3_arn", help="The S3 ARN for VPC flow logs")
+    parser.add_argument("sample_days", type=int, help="The number of days for sample collection")
+    args = parser.parse_args()
 
-    traffic_pattern = defaultdict(lambda: defaultdict(set))  # Nested defaultdict for structure
+    traffic_pattern = defaultdict(lambda: defaultdict(set))  # Define traffic_pattern here
 
     for log_data in download_vpc_flow_logs_from_s3(s3_arn, sample_days):
         for log_entry in identify_egress_traffic(log_data):
             for key, value in log_entry.items():
                 if key in ['srcaddr', 'dstaddr', 'dstport', 'protocol']:
                     traffic_pattern[log_entry['srcaddr']][key].add(value)
+                    
+if __name__ == "__main__":
+    main()
 
 # Print the traffic pattern in a table format
 print("\nTraffic Pattern:")
