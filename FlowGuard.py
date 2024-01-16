@@ -3,6 +3,8 @@ import csv
 import datetime
 import pytz  # Import the pytz library
 import re  # Import regex module
+import gzip
+import io
 from collections import defaultdict
 from tqdm import tqdm  # For progress bars
 
@@ -29,9 +31,17 @@ def download_vpc_flow_logs_from_s3(sample_days):
     for file_key in list_files(bucket_name, initial_prefix):
         with tqdm(desc=f"Downloading {file_key}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
             obj = s3.get_object(Bucket=bucket_name, Key=file_key)
-            for chunk in obj['Body'].iter_chunks():
-                pbar.update(len(chunk))
-                yield chunk.decode('utf-8')
+            if file_key.endswith('.gz'):
+                # Handle GZIP compressed files
+                with gzip.GzipFile(fileobj=io.BytesIO(obj['Body'].read())) as gzipfile:
+                    for line in gzipfile:
+                        pbar.update(len(line))
+                        yield line.decode('utf-8')
+            else:
+                # Handle non-compressed files
+                for chunk in obj['Body'].iter_chunks():
+                    pbar.update(len(chunk))
+                    yield chunk.decode('utf-8')
 
 # Function to identify egress traffic and strip columns
 def identify_egress_traffic(log_data):
