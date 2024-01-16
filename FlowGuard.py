@@ -1,110 +1,70 @@
 import boto3
-import argparse
-import os
-from tqdm import tqdm
+import csv
+import datetime
+from collections import defaultdict
+from tqdm import tqdm  # For progress bars
 
-def download_vpc_flow_logs_from_s3(bucket_name, s3_key, local_file_path):
-    """Downloads VPC flow logs from an S3 bucket."""
-    try:
-        s3 = boto3.client('s3')
-        s3.download_file(bucket_name, s3_key, local_file_path)
-    except Exception as e:
-        print(f"Error downloading file from S3: {e}")
-        exit(1)
+# Function to download VPC flow logs from S3
+def download_vpc_flow_logs_from_s3(s3_arn, sample_days):
+    # Connect to S3 and get bucket and prefix from ARN
+    s3 = boto3.client('s3')
+    bucket_name, prefix = s3_arn.split(':')[4:6]
 
-def read_vpc_flow_logs(file_path):
-    """Reads VPC flow logs from a file."""
-    try:
-        with open(file_path, 'r') as file:
-            logs = file.readlines()
-        return logs
-    except Exception as e:
-        print(f"Error reading flow log file: {e}")
-        exit(1)
+    # Get a list of files within the sample collection days limit
+    now = datetime.datetime.utcnow()
+    limit_date = now - datetime.timedelta(days=sample_days)
+    files = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)['Contents']
+    files = [file['Key'] for file in files if file['LastModified'] > limit_date]
 
-def parse_vpc_flow_logs(logs):
-    """Parses VPC flow logs."""
-    parsed_logs = []
-    for log in logs:
-        parts = log.strip().split()
-        if len(parts) < 7:  # Basic validation of log format
-            continue
-        parsed_log = {
-            'src_ip': parts[3],
-            'dest_ip': parts[4],
-            'src_port': int(parts[5]),
-            'dest_port': int(parts[6]),
-            'protocol': parts[7]
-        }
-        parsed_logs.append(parsed_log)
-    return parsed_logs
+    # Download each file and yield its contents
+    for file in files:
+        with tqdm(desc=f"Downloading {file}", unit="B", unit_scale=True, unit_divisor=1024) as pbar:
+            obj = s3.get_object(Bucket=bucket_name, Key=file)
+            for chunk in obj['Body'].iter_chunks():
+                pbar.update(len(chunk))
+                yield chunk.decode('utf-8')
 
-def analyze_traffic(parsed_logs):
-    """Analyzes traffic patterns."""
-    traffic_patterns = {}
-    for log in parsed_logs:
-        key = (log['dest_port'], log['protocol'])
-        if key in traffic_patterns:
-            traffic_patterns[key].add(log['src_ip'])
-        else:
-            traffic_patterns[key] = {log['src_ip']}
-    return traffic_patterns
+# Function to identify egress traffic and strip columns
+def identify_egress_traffic(log_data):
+    reader = csv.DictReader(log_data.splitlines())
+    for row in reader:
+        if row['action'] == 'ACCEPT' and row['flow-direction'] == 'egress':
+            yield {
+                'srcaddr': row['srcaddr'],
+                'dstaddr': row['dstaddr'],
+                'dstport': row['dstport'],
+                'protocol': row['protocol'],
+                'vpc-id': row['vpc-id'],
+                'subnet-id': row['subnet-id'],
+                'instance-id': row['instance-id'],
+                'region': row['region']
+            }
 
-def create_security_group_rules(traffic_patterns):
-    """Creates AWS security group rules based on traffic patterns."""
-    ec2 = boto3.client('ec2')
-    try:
-        response = ec2.create_security_group(GroupName='FlowGuardGroup',
-                                             Description='Security group created by FlowGuard')
-        group_id = response['GroupId']
+# Main program
+def main():
+    s3_arn = input("Enter the S3 ARN for VPC flow logs: ")
+    sample_days = int(input("Enter the number of days for sample collection: "))
 
-        for (port, protocol), ips in traffic_patterns.items():
-            ec2.authorize_security_group_ingress(
-                GroupId=group_id,
-                IpPermissions=[
-                    {
-                        'IpProtocol': protocol,
-                        'FromPort': port,
-                        'ToPort': port,
-                        'IpRanges': [{'CidrIp': f'{ip}/32'} for ip in ips]
-                    }
-                ]
-            )
-        print(f"Security group {group_id} created and rules added.")
-    except Exception as e:
-        print(f"Error creating security group: {e}")
-        exit(1)
+    traffic_pattern = defaultdict(lambda: defaultdict(set))  # Nested defaultdict for structure
 
-def main(bucket_arn):
-    # Parsing bucket ARN
-    parts = bucket_arn.split(':')
-    bucket_name = parts[5].split('/')[0]
-    s3_key = '/'.join(parts[5].split('/')[1:])
-    local_file_path = '/tmp/vpc_flow_logs.txt'
+    for log_data in download_vpc_flow_logs_from_s3(s3_arn, sample_days):
+        for log_entry in identify_egress_traffic(log_data):
+            for key, value in log_entry.items():
+                if key in ['srcaddr', 'dstaddr', 'dstport', 'protocol']:
+                    traffic_pattern[log_entry['srcaddr']][key].add(value)
 
-    # Downloading logs
-    print("Downloading VPC flow logs from S3...")
-    download_vpc_flow_logs_from_s3(bucket_name, s3_key, local_file_path)
-
-    if os.path.exists(local_file_path):
-        file_size = os.path.getsize(local_file_path)
-        print(f"Processing {file_size} bytes of flow logs...")
-        with tqdm(total=file_size, unit='B', unit_scale=True, desc="Reading Logs") as pbar:
-            flow_logs = read_vpc_flow_logs(local_file_path)
-            pbar.update(file_size)
-
-        parsed_logs = parse_vpc_flow_logs(flow_logs)
-        traffic_patterns = analyze_traffic(parsed_logs)
-
-        print("Updating security groups based on traffic patterns...")
-        create_security_group_rules(traffic_patterns)
-    else:
-        print("Flow log file not found after download.")
-        exit(1)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='FlowGuard: AWS VPC Flow Log Analyzer')
-    parser.add_argument('bucket_arn', type=str, help='S3 bucket ARN containing the VPC flow logs')
-    args = parser.parse_args()
-
-    main(args.bucket_arn)
+    # Print the traffic pattern in a table format
+    print("\nTraffic Pattern:")
+    print("-" * 50)
+    print("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}".format(
+        "srcaddr", "dstaddr(s)", "dstport(s)", "protocol", "vpc-id", "subnet-id", "instance-id", "region"))
+    print("-" * 50)
+    for srcaddr, values in traffic_pattern.items():
+        print("{:<15} {:<15} {:<10} {:<8} {:<15} {:<15} {:<15} {:<15}".format(
+            srcaddr,
+            ','.join(values['dstaddr']),
+            ','.join(values['dstport']),
+            values['protocol'],
+            values.get('vpc-id', ''),
+            values.get('subnet-id', ''),
+            values.get('instance-id',
